@@ -4,11 +4,14 @@
 import blpapi
 import datetime
 from optparse import OptionParser
+from dateutil.relativedelta import relativedelta
+from collections import Counter
 
 DEFAULT_IP = "10.8.8.1"
 DEFAULT_PORT = 8194
 
 dataList = []
+bestBuySellArr = []
 
 
 def parseCmdLine():
@@ -64,9 +67,9 @@ def main():
         request.getElement("fields").appendValue("OPEN")
         request.set("periodicityAdjustment", "ACTUAL")
         request.set("periodicitySelection", "DAILY")
-        request.set("startDate", "19830101")
+        request.set("startDate", "19200101")
         request.set("endDate", "20131231")
-        request.set("maxDataPoints", 100)
+        request.set("maxDataPoints", 100000000)
 
         print "Sending Request:", request
         # Send the request
@@ -78,7 +81,6 @@ def main():
             # We provide timeout to give the chance for Ctrl+C handling:
             ev = session.nextEvent(500)
             for msg in ev:
-                print msg
                 print (msg.messageType())
                 if msg.messageType() == "HistoricalDataResponse":
                 	finalmsg = msg
@@ -104,76 +106,86 @@ def main():
 
     print("Parsing finished! Beginning analysis.")
 
-    i = 0
-    hardStopDate = dataList[len(dataList) - 1][0]
-    while i < len(dataList):
-    	shortDateList = []
-    	j = 0 	
+    analyzeDates()
 
-    	startDate = dataList[i][0]
-    	stopDate = firstDate.replace(year=firstDate.year+1)
+    print("Analysis complete.")
 
-    	#Check that we have at least one day's worth of data to examine
-    	if stopDate > hardStopDate:
-    		break 
+    buydata = Counter([el[0] for el in bestBuySellArr])
+    selldata = Counter([el[1] for el in bestBuySellArr])
 
-    	# Create the price/date list for getBestTime
-    	while startDate.date() < stopDate.date():
-    		shortDateList.append(dataList[i + j])
-    		startDate = dataList[i + j][0]
-    		j++
+    bestBuy = buydata.most_common(1)
+    bestSell = selldata.most_common(1)
 
-    	# find the best day to buy and sell
-    	bestBuy, bestSell = getBestTime(shortDateList)
+    bestBuyWeek = bestBuy[0][0][0] 
+    bestBuyWeekday = bestBuy[0][0][1] 
+    bestSellWeek = bestSell[0][0][0]
+    bestSellWeekday = bestSell[0][0][1]
 
-    	#Convert the dates to (week, day) tuples
-    	buyWeek, buyDay = weekDay(bestBuy.year, bestBuy.month, bestBuy.day)
-    	sellWeek, sellDay = weekDay(bestSell.year, bestSell.month, bestSell.day)
+    b = "The best day of the year to purchase stock is on weekday " + str(bestBuyWeekday) + " of week " + str(bestBuyWeek) + "."
+    s = "The best day of the year to sell stock is on weekday " + str(bestSellWeekday) + " of week " + str(bestSellWeek) + "."
+
+    print b
+    print s
+
+    
+# Analyzes the date array
+def analyzeDates():
+	i = 0
+	hardStopDate = dataList[len(dataList) - 1][0]
+	while i < len(dataList):
+		shortDateList = []
+		j = 0 	
+
+		startDate = dataList[i][0]
+		stopDate = startDate + relativedelta(year = startDate.year + 1)
 
 
+		#Check that we have at least one day's worth of data to examine
+		if stopDate > hardStopDate:
+			break 
 
-    	i++
+		# Create the price/date list for getBestTime
+		while startDate< stopDate:
+			shortDateList.append(dataList[i + j])
+			startDate = dataList[i + j][0]
+			j += 1
+
+		# find the best day to buy and sell
+		bestBuy, bestSell = getBestTime(shortDateList)
+
+		#Convert the dates to (week, day) tuples
+		buyWeek, buyDay = bestBuy.isocalendar()[1], bestBuy.isocalendar()[2]
+		sellWeek, sellDay = bestSell.isocalendar()[1], bestSell.isocalendar()[2]
+
+		# Save these in our bestBuyarr/bestSellarr
+		buy = (buyWeek, buyDay)
+		sell = (sellWeek, sellDay)
+		buysell = (buy, sell)
+
+		bestBuySellArr.append(buysell)
+
+		# Bookkeeping
+		i += 1
     		
 # Given an array of (date, priceClose, priceOpen), return a buydate that aligns with the 
 # lowest buy price and a selldate that aligns with the highest sell price
 def getBestTime(store):
-    min = 0
+    mini = 0
     maxDiff = 0
-    buydate = datetime.date(0, 0, 0)
-    selldate = datetime.date(0, 0, 0)
+    buydate = store[0][0]
+    selldate = store[0][0]
     for i in range (0, len(store)):
-        if store[i][2] < store[min][2]:
-            min = store[i][2]
-        diff = store[i][2] - store[min][2]
+        if store[i][2] < store[mini][2]:
+            mini = i
+        diff = store[i][2] - store[mini][2]
         if diff > maxDiff:
-            buy = min
-            buydate = store[min][0]
-            sell = i
+            buy = mini
             selldate = store[i][0]
-            maxDiff = diff
+            buydate = store[mini][0]
+
     return (buydate, selldate)
 
 	 
-
-
-# Given a date, computes week given the month day and year
-# https://stackoverflow.com/questions/9847213/which-day-of-week-given-a-date-python/17120430#17120430
-def weekDay(year, month, day):
-	offset = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
-
-	afterFeb = 1
-	if month > 2: afterFeb = 0
-	aux = year - 1700 - afterFeb
-	# dayOfWeek for 1700/1/1 = 5, Friday
-	dayOfWeek  = 5
-	# partial sum of days betweem current date and 1700/1/1
-	dayOfWeek += (aux + afterFeb) * 365                  
-	# leap year correction    
-	dayOfWeek += aux / 4 - aux / 100 + (aux + 100) / 400     
-	# sum monthly and day offsets
-	dayOfWeek += offset[month - 1] + (day - 1)               
-	dayOfWeek %= 7
-	return dayOfWeek
 
 
 if __name__ == "__main__":
