@@ -54,12 +54,13 @@ def main():
         request = refDataService.createRequest("HistoricalDataRequest")
         request.getElement("securities").appendValue("IBM US Equity")
         request.getElement("securities").appendValue("MSFT US Equity")
+        request.getElement("securities").appendValue("SPX Index")
         request.getElement("fields").appendValue("PX_LAST")
         request.getElement("fields").appendValue("OPEN")
         request.set("periodicityAdjustment", "ACTUAL")
-        request.set("periodicitySelection", "MONTHLY")
-        request.set("startDate", "20060101")
-        request.set("endDate", "20061231")
+        request.set("periodicitySelection", "DAILY")
+        request.set("startDate", "19500101")
+        request.set("endDate", "19701231")
         request.set("maxDataPoints", 100)
 
         print "Sending Request:", request
