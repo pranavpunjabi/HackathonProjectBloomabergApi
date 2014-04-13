@@ -2,10 +2,13 @@
 # export DYLD_LIBRARY_PATH=~/Work/bloombergbot/blpapi_cpp_3.7.5.1/Darwin/
 
 import blpapi
+import datetime
 from optparse import OptionParser
 
 DEFAULT_IP = "10.8.8.1"
 DEFAULT_PORT = 8194
+
+dataList = []
 
 
 def parseCmdLine():
@@ -61,34 +64,96 @@ def main():
         request.getElement("fields").appendValue("OPEN")
         request.set("periodicityAdjustment", "ACTUAL")
         request.set("periodicitySelection", "DAILY")
-        request.set("startDate", "19500101")
-        request.set("endDate", "19701231")
+        request.set("startDate", "19830101")
+        request.set("endDate", "20131231")
         request.set("maxDataPoints", 100)
 
         print "Sending Request:", request
         # Send the request
         session.sendRequest(request)
+        finalmsg = None
 
         # Process received events
         while(True):
             # We provide timeout to give the chance for Ctrl+C handling:
             ev = session.nextEvent(500)
             for msg in ev:
-
-
                 print msg
+                print (msg.messageType())
+                if msg.messageType() == "HistoricalDataResponse":
+                	finalmsg = msg
+
 
             if ev.eventType() == blpapi.Event.RESPONSE:
                 # Response completly received, so we could exit
-                print("Data recieved from server.")
+                print("Data recieved from server. Begin parsing...")
+                fieldData = msg.getElement("securityData").getElement("fieldData")
+                fieldIterator = fieldData.values()
+                for el in fieldIterator:
+                	date = el.getElementAsDatetime("date")
+                	priceClose = el.getElementAsFloat("PX_LAST")
+                	priceOpen = el.getElementAsFloat("OPEN")
+
+                	store = (date, priceClose, priceOpen)
+                	dataList.append(store)
+
                 break
     finally:
         # Stop the session
         session.stop()
 
-    print("Begin ananlys section")
-    
+    print("Parsing finished! Beginning analysis.")
 
+    i = 0
+    hardStopDate = dataList[len(dataList) - 1][0]
+    while i < len(dataList):
+    	shortDateList = []
+    	j = 0 	
+
+    	startDate = dataList[i][0]
+    	stopDate = firstDate.replace(year=firstDate.year+1)
+
+    	#Check that we have at least one day's worth of data to examine
+    	if stopDate > hardStopDate:
+    		break 
+
+    	# Create the price/date list for getBestTime
+    	while startDate.date() < stopDate.date():
+    		shortDateList.append(dataList[i + j])
+    		startDate = dataList[i + j][0]
+    		j++
+
+    	# find the best day to buy and sell
+    	bestBuy, bestSell = getBestTime(shortDateList)
+
+    	#Convert the dates to (week, day) tuples
+    	buyWeek, buyDay = weekDay(bestBuy.year, bestBuy.month, bestBuy.day)
+    	sellWeek, sellDay = weekDay(bestSell.year, bestSell.month, bestSell.day)
+
+
+
+    	i++
+    		
+# Given an array of (date, priceClose, priceOpen), return a buydate that aligns with the 
+# lowest buy price and a selldate that aligns with the highest sell price
+def getBestTime(store):
+    min = 0
+    maxDiff = 0
+    buydate = datetime.date(0, 0, 0)
+    selldate = datetime.date(0, 0, 0)
+    for i in range (0, len(store)):
+        if store[i][2] < store[min][2]:
+            min = store[i][2]
+        diff = store[i][2] - store[min][2]
+        if diff > maxDiff:
+            buy = min
+            buydate = store[min][0]
+            sell = i
+            selldate = store[i][0]
+            maxDiff = diff
+    return (buydate, selldate)
+
+	 
 
 
 # Given a date, computes week given the month day and year

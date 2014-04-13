@@ -71,7 +71,10 @@ def main():
         while(True):
             # We provide timeout to give the chance for Ctrl+C handling:
             ev = session.nextEvent(500)
+            counter = 0
             for msg in ev:
+                # The fourth message contains valuable info and we want to extract
+                # securitydata.fielddata
                 print msg
 
             if ev.eventType() == blpapi.Event.RESPONSE:
